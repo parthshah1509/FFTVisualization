@@ -2,39 +2,43 @@ var fft;
 var mic;
 var button;
 
-var w; //width of the bands
-var bands; //number of bands for the FFT variable
+var w;
+var bands;
 var curr;
-// var ignored; //was using to ignore a few pitches but found a different way to do so
-var micIsOn = false; //boolean to check if the mic is on
-// var gap;
+var ignored;
+var micIsOn = false;
+var finalSpectrum;
+var gapFromTop;
 
 function setup() {
   // put setup code here
-  createCanvas(600 ,200) //this would usually be WindowWidth,height
+  createCanvas(600 ,200); //this would usually be WindowWidth,height
+  getAudioContext().suspend();
+  console.log(getAudioContext().state);
   bands = 64; //64 worked best, 128 is too many bands to plot plus we dont care for the information on pitch
-  mic = new p5.AudioIn();
-  // colorMode(HSB)
+  gapFromTop = 20; //In Pixels
+  fft = new p5.FFT(0.80,bands); //smoothing the values to 0.8 thus getting a cleaner plot
   button = createButton("Start Mic");
   button.mousePressed(micOn);
-  fft = new p5.FFT(0.80,bands); //smoothing the values to 0.8 thus getting a cleaner plot
-  fft.setInput(mic);
-  // ignored = Math.floor(bands/8);
-  // w = Math.floor((width) / (2*bands));
-  w = (width) / (2*bands) // calculate width of bands
-  // gap = width/10;
-  // console.log("ignored = " + ignored);
-  console.log(" Bandwidth = " + w);
+  ignored = 10;
+  w = Math.floor((width) / (2*(bands-ignored)));
+  console.log("ignored = " + ignored);
+  console.log("bandwidth = " + w);
 }
 
 
 function micOn() { // button toggle
-  if(mic.getLevel()){
+  console.log(getAudioContext().state);
+  if(getAudioContext().state == 'running'){
+    getAudioContext().suspend();
     micIsOn = false;
     mic.stop();
     button.html("Start Mic");
   }
   else {
+    getAudioContext().resume();
+    mic = new p5.AudioIn();
+    fft.setInput(mic);
     micIsOn = true;
     mic.start();
     button.html("Stop Mic");
@@ -42,30 +46,35 @@ function micOn() { // button toggle
 }
 
 function draw() {
-  background(0); //balck background
-  stroke(64,64,64); // middle line
+  background(0)
+  stroke(64,64,64);
   line(0,height/2,width,height/2)
-  var spectrum = fft.analyze(); // list of FFT values
-  if(micIsOn && mic.getLevel() < 0.0005){
-    spectrum = spectrum.map(function(x) { return Math.floor(random(10,15)); });  //random for when mic is on but nothing is being said
-  }
-  noStroke();
-  //color -  #D2EDD4 ---- prog - '#46B54D'
-  var amp;
-  for (let i = 0; i < spectrum.length; i++){
-    amp = spectrum[bands - i - 1];
-    // dampen some pitches?
-    if(bands - i - 1 < 35){
-      amp *= 0.85
+  var spectrum = fft.analyze();
+  var maxVal = Math.max(spectrum);
+  var arrAvg = spectrum => spectrum.reduce((a,b) => a + b, 0) / spectrum.length
+  if(micIsOn) {
+    if(mic.getLevel() < 0.0005){
+      spectrum = spectrum.map(function(x) { return Math.floor(random(10,15)); });
     }
-    var x = i*w;
-    // var x = map(i*w,0,(bands-1)*w,gap,width-gap);
-    var y = map(amp, 0, 256, 0, height/2);
-    var gre = map(i,0,32,150,240);
-    var blu = map(i,0,32,50,150);
-    fill(255,gre,blu);
-    rect(x, height/2, w - 1, -y);
-    rect((width - x), height/2, w - 1, -y);
+    noStroke();
+    //color -  #D2EDD4 ---- prog - '#46B54D'
+    for (let i = ignored; i < spectrum.length - ignored; i++){
+      var amp = spectrum[i]*0.75;
+      if(mic.getLevel() > 0.005){
+        if(i > ignored + 15){
+          amp += Math.random(maxVal*0.7,maxVal);
+        }
+      }
+      if(amp < 0)
+          amp = maxVal*0.75;
+      var x = map(i, ignored, spectrum.length - ignored - 1, gapFromTop, (width/2))
+      var y;
+      y = map(amp, 0, 256, 0, height/2 - gapFromTop);
+      var gre = map(i,ignored,64 - ignored,150,255);
+      var blu = map(i,ignored,64 - ignored,50,160);
+      fill(255,gre,blu);
+      rect(x, height/2, w - 1, -y);
+      rect((width - x), height/2, w - 1, -y);
+    }
   }
-  rect(bands*w,height/2, w-1, -spectrum[0]*0.5) //central band
 }
